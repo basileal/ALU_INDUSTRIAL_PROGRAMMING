@@ -1,0 +1,85 @@
+<div id="alu-waveform-view">
+  <style>
+    #alu-waveform-view { color: var(--foreground); font: inherit; }
+    #alu-waveform-view h1 { margin: 0 0 calc(var(--font-size-base) * .5); }
+    #alu-waveform-view .wave-controls { display: flex; align-items: center; gap: calc(var(--font-size-base) * .75); flex-wrap: wrap; }
+    #alu-waveform-view .wave-controls label { flex: 1 1 220px; }
+    #alu-waveform-view output { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+    #alu-waveform-view svg { display: block; width: 100%; height: auto; overflow: visible; color: var(--foreground); }
+    #alu-waveform-view .axis, #alu-waveform-view .tick { stroke: var(--border); stroke-width: 1; }
+    #alu-waveform-view .bus { fill: var(--muted); fill-opacity: .45; stroke: var(--viz-series-1); stroke-width: 1.5; }
+    #alu-waveform-view .bus-value { fill: var(--foreground); font: 500 var(--font-size-base) ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; dominant-baseline: middle; }
+    #alu-waveform-view .lane-name { fill: var(--foreground); font: 500 var(--font-size-base) sans-serif; dominant-baseline: middle; }
+    #alu-waveform-view .time-label { fill: var(--muted-foreground); font: 400 calc(var(--font-size-base) * .85) sans-serif; text-anchor: middle; }
+  </style>
+  <h1>ry_alu simulated waveforms</h1>
+  <div class="wave-controls">
+    <label class="form-label" for="alu-time-window">Time window <output id="alu-window-label" aria-live="polite"></output>
+      <input class="form-range" id="alu-time-window" type="range" min="0" max="36" value="0" step="1" aria-label="Starting nanosecond of waveform window">
+    </label>
+  </div>
+  <svg id="alu-wave-svg" role="img" aria-label="Simulated ALU operation, operands, and result over time">
+    <title>ry_alu testbench waveform</title>
+    <desc>Each bus value is shown in hexadecimal for one nanosecond. Drag the time control to inspect later operations.</desc>
+  </svg>
+  <script>
+    (() => {
+      const root = document.getElementById('alu-waveform-view');
+      const xValues = `00000000 A5A55A5A 00000000 A5A55A5A FFFFFFFF A5A55A5A 80000000 7FFFFFFF FFFFFFFF 12345678 80000000 00000000 FFFFFFFF 12345678 00000000 00000001 7FFFFFFF FFFFFFFF 12345678 00000000 00000005 00000000 80000000 12345678 80000001 80000001 80000001 FFFFFFFF 80000001 80000001 00000001 00000001 FFFFFFFF 80000001 80000001 80000001 80000001 7FFFFFFF 80000001 DEADBEEF FFFFFFFF 00000000 00000001 00000001 00000001`.split(' ');
+      const yValues = `FFFFFFFF 0F0FF0F0 80000001 0F0FF0F0 FFFFFFFF 0F0FF0F0 00000000 80000000 00000001 12345678 00000000 80000000 FFFFFFFE 12345678 00000000 00000001 00000001 00000001 11111111 00000000 00000005 00000001 00000001 11111111 00000000 00000001 0000001F 00000008 00000020 00000000 00000001 0000001F 00000008 00000020 00000000 00000001 0000001F 00000001 00000020 12345678 FFFFFFFF 00000000 00000000 00000003 00000003`.split(' ');
+      const resultValues = `00000000 05055050 80000001 AFAFFAFA 00000000 AAAAAAAA 00000001 00000000 00000001 00000000 00000000 00000001 00000000 00000000 00000000 00000002 80000000 00000000 23456789 00000000 00000000 FFFFFFFF 7FFFFFFF 01234567 80000001 40000000 00000001 00FFFFFF 80000001 80000001 00000002 80000000 FFFFFF00 80000001 80000001 C0000000 FFFFFFFF 3FFFFFFF 80000001 00000000 00000000 00000000 00000001 00000002 00000003`.split(' ');
+      const opCodes = `0 0 1 1 2 2 3 3 3 3 4 4 4 4 5 5 5 5 5 6 6 6 6 6 7 7 7 7 7 8 8 8 8 8 9 9 9 9 9 10 11 2 2 2 1`.split(' ').map(Number);
+      const opNames = ['AND', 'OR', 'XOR', 'SLT', 'SLTU', 'ADD', 'SUB', 'SRL', 'SLL', 'SRA', 'NOP', 'INVALID'];
+      const slider = root.querySelector('#alu-time-window');
+      const label = root.querySelector('#alu-window-label');
+      const svg = root.querySelector('#alu-wave-svg');
+      const ns = 'http://www.w3.org/2000/svg';
+
+      function node(tag, attrs, text) {
+        const el = document.createElementNS(ns, tag);
+        Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+        if (text !== undefined) el.textContent = text;
+        return el;
+      }
+
+      function draw() {
+        const count = Math.max(2, Math.min(8, Math.floor((root.clientWidth - 130) / 100)));
+        const maxStart = xValues.length - count;
+        slider.max = String(maxStart);
+        const start = Math.min(Number(slider.value), maxStart);
+        slider.value = String(start);
+        const left = 112, cell = 100, width = left + count * cell + 8, top = 30, laneGap = 58, height = top + 4 * laneGap + 18;
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.replaceChildren(svg.querySelector('title'), svg.querySelector('desc'));
+
+        const names = ['operation', 'x[31:0]', 'y[31:0]', 'result[31:0]'];
+        names.forEach((name, lane) => {
+          const y = top + lane * laneGap;
+          svg.append(node('text', { x: 0, y, class: 'lane-name' }, name));
+          svg.append(node('line', { x1: left, y1: y + 22, x2: width, y2: y + 22, class: 'axis' }));
+          for (let j = 0; j < count; j++) {
+            const i = start + j, x = left + j * cell;
+            svg.append(node('line', { x1: x, y1: top - 8, x2: x, y2: height - 12, class: 'tick' }));
+            if (lane === 0) {
+              const op = opNames[opCodes[i]];
+              svg.append(node('rect', { x: x + 7, y: y - 12, width: cell - 14, height: 24, rx: 4, class: 'bus' }));
+              svg.append(node('text', { x: x + cell / 2, y, class: 'bus-value' }, op));
+            } else {
+              const values = [xValues, yValues, resultValues][lane - 1];
+              const points = `${x + 8},${y} ${x + 16},${y - 10} ${x + cell - 16},${y - 10} ${x + cell - 8},${y} ${x + cell - 16},${y + 10} ${x + 16},${y + 10}`;
+              svg.append(node('polygon', { points, class: 'bus' }));
+              svg.append(node('text', { x: x + cell / 2, y, class: 'bus-value' }, values[i]));
+            }
+            if (lane === 3) svg.append(node('text', { x: x + cell / 2, y: height - 1, class: 'time-label' }, `${i} ns`));
+          }
+        });
+        svg.append(node('line', { x1: left + count * cell, y1: top - 8, x2: left + count * cell, y2: height - 12, class: 'tick' }));
+        label.textContent = `${start}–${start + count - 1} ns · ${count} of ${xValues.length} steps`;
+      }
+
+      slider.addEventListener('input', draw);
+      new ResizeObserver(draw).observe(root);
+      draw();
+    })();
+  </script>
+</div>

@@ -1,0 +1,20 @@
+[*]
+[*] GTKWave ALU trace layout
+[*]
+[dumpfile] "artifacts/ry-alu.vcd"
+[savefile] "artifacts/ry-alu.gtkw"
+[timestart] 0
+[size] 1180 760
+[pos] -1 -1
+[signals_width] 190
+[sst_width] 220
+[sst_expanded] 1
+@22
+[color] 1
+tb_ry_alu.operation_code[3:0]
+[color] 2
+tb_ry_alu.x[31:0]
+[color] 3
+tb_ry_alu.y[31:0]
+[color] 4
+tb_ry_alu.result[31:0]
